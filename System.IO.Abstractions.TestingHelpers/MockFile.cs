@@ -3,6 +3,8 @@ using System.Globalization;
 using System.Linq;
 using System.Security.AccessControl;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace System.IO.Abstractions.TestingHelpers
 {
@@ -37,6 +39,19 @@ namespace System.IO.Abstractions.TestingHelpers
             AppendAllText(path, concatContents, encoding);
         }
 
+#if NETCOREAPP2_0
+        public override Task AppendAllLinesAsync(string path, IEnumerable<string> contents, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            AppendAllLines(path, contents);
+            return Task.CompletedTask;
+        }
+
+        public override Task AppendAllLinesAsync(string path, IEnumerable<string> contents, Encoding encoding, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            AppendAllLines(path, contents, encoding);
+            return Task.CompletedTask;
+        }
+#endif
         public override void AppendAllText(string path, string contents)
         {
             mockFileDataAccessor.PathVerifier.IsLegalAbsoluteOrRelative(path, "path");
@@ -61,10 +76,25 @@ namespace System.IO.Abstractions.TestingHelpers
             else
             {
                 var file = mockFileDataAccessor.GetFile(path);
+                file.CheckFileAccess(path, FileAccess.Write);
                 var bytesToAppend = encoding.GetBytes(contents);
                 file.Contents = file.Contents.Concat(bytesToAppend).ToArray();
             }
         }
+
+#if NETCOREAPP2_0
+        public override Task AppendAllTextAsync(string path, string contents, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            AppendAllText(path, contents);
+            return Task.CompletedTask;
+        }
+
+        public override Task AppendAllTextAsync(string path, string contents, Encoding encoding, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            AppendAllText(path, contents, encoding);
+            return Task.CompletedTask;
+        }
+#endif
 
         public override StreamWriter AppendText(string path)
         {
@@ -89,20 +119,20 @@ namespace System.IO.Abstractions.TestingHelpers
         {
             if (sourceFileName == null)
             {
-                throw new ArgumentNullException(nameof(sourceFileName), StringResources.Manager.GetString("FILENAME_CANNOT_BE_NULL"));
+                throw CommonExceptions.FilenameCannotBeNull(nameof(sourceFileName));
             }
 
             if (destFileName == null)
             {
-                throw new ArgumentNullException(nameof(destFileName), StringResources.Manager.GetString("FILENAME_CANNOT_BE_NULL"));
+                throw CommonExceptions.FilenameCannotBeNull(nameof(destFileName));
             }
 
-            mockFileDataAccessor.PathVerifier.IsLegalAbsoluteOrRelative(sourceFileName, "sourceFileName");
-            mockFileDataAccessor.PathVerifier.IsLegalAbsoluteOrRelative(destFileName, "destFileName");
+            mockFileDataAccessor.PathVerifier.IsLegalAbsoluteOrRelative(sourceFileName, nameof(sourceFileName));
+            mockFileDataAccessor.PathVerifier.IsLegalAbsoluteOrRelative(destFileName, nameof(destFileName));
 
             if (!Exists(sourceFileName))
             {
-                throw new FileNotFoundException(string.Format(CultureInfo.InvariantCulture, StringResources.Manager.GetString("COULD_NOT_FIND_FILE_EXCEPTION"), sourceFileName));
+                throw CommonExceptions.FileNotFound(sourceFileName);
             }
 
             VerifyDirectoryExists(destFileName);
@@ -176,6 +206,12 @@ namespace System.IO.Abstractions.TestingHelpers
             // but silently returns if deleting a non-existing file in an existing folder.
             VerifyDirectoryExists(path);
 
+            var file = mockFileDataAccessor.GetFile(path);
+            if (file != null && !file.AllowedFileShare.HasFlag(FileShare.Delete))
+            {
+                throw CommonExceptions.ProcessCannotAccessFileInUse(path);
+            }
+
             mockFileDataAccessor.RemoveFile(path);
         }
 
@@ -205,7 +241,7 @@ namespace System.IO.Abstractions.TestingHelpers
 
             if (!mockFileDataAccessor.FileExists(path))
             {
-                throw new FileNotFoundException(string.Format(CultureInfo.InvariantCulture, StringResources.Manager.GetString("COULD_NOT_FIND_FILE_EXCEPTION"), path));
+                throw CommonExceptions.FileNotFound(path);
             }
 
             var fileData = mockFileDataAccessor.GetFile(path);
@@ -233,7 +269,7 @@ namespace System.IO.Abstractions.TestingHelpers
         {
             if (path != null && path.Length == 0)
             {
-                throw new ArgumentException(StringResources.Manager.GetString("THE_PATH_IS_NOT_OF_A_LEGAL_FORM"), "path");
+                throw CommonExceptions.PathIsNotOfALegalForm(nameof(path));
             }
 
             mockFileDataAccessor.PathVerifier.IsLegalAbsoluteOrRelative(path, "path");
@@ -255,7 +291,7 @@ namespace System.IO.Abstractions.TestingHelpers
                 {
                     VerifyDirectoryExists(path);
 
-                    throw new FileNotFoundException(string.Format(CultureInfo.InvariantCulture, "Could not find file '{0}'.", path));
+                    throw CommonExceptions.FileNotFound(path);
                 }
             }
 
@@ -324,16 +360,16 @@ namespace System.IO.Abstractions.TestingHelpers
         {
             if (sourceFileName == null)
             {
-                throw new ArgumentNullException(nameof(sourceFileName), StringResources.Manager.GetString("FILENAME_CANNOT_BE_NULL"));
+                throw CommonExceptions.FilenameCannotBeNull(nameof(sourceFileName));
             }
 
             if (destFileName == null)
             {
-                throw new ArgumentNullException(nameof(destFileName), StringResources.Manager.GetString("FILENAME_CANNOT_BE_NULL"));
+                throw CommonExceptions.FilenameCannotBeNull(nameof(destFileName));
             }
 
-            mockFileDataAccessor.PathVerifier.IsLegalAbsoluteOrRelative(sourceFileName, "sourceFileName");
-            mockFileDataAccessor.PathVerifier.IsLegalAbsoluteOrRelative(destFileName, "destFileName");
+            mockFileDataAccessor.PathVerifier.IsLegalAbsoluteOrRelative(sourceFileName, nameof(sourceFileName));
+            mockFileDataAccessor.PathVerifier.IsLegalAbsoluteOrRelative(destFileName, nameof(destFileName));
 
             if (mockFileDataAccessor.GetFile(destFileName) != null)
             {
@@ -351,8 +387,13 @@ namespace System.IO.Abstractions.TestingHelpers
             var sourceFile = mockFileDataAccessor.GetFile(sourceFileName);
 
             if (sourceFile == null)
-                throw new FileNotFoundException(string.Format(CultureInfo.InvariantCulture, "The file \"{0}\" could not be found.", sourceFileName), sourceFileName);
-
+            {
+                throw CommonExceptions.FileNotFound(sourceFileName);
+            }
+            if (!sourceFile.AllowedFileShare.HasFlag(FileShare.Delete))
+            {
+                throw CommonExceptions.ProcessCannotAccessFileInUse();
+            }
             VerifyDirectoryExists(destFileName);
 
             mockFileDataAccessor.AddFile(destFileName, new MockFileData(sourceFile.Contents));
@@ -391,7 +432,7 @@ namespace System.IO.Abstractions.TestingHelpers
                 throw new IOException(string.Format(CultureInfo.InvariantCulture, "The file '{0}' already exists.", path));
 
             if ((mode == FileMode.Open || mode == FileMode.Truncate) && !exists)
-                throw new FileNotFoundException(path);
+                throw CommonExceptions.FileNotFound(path);
 
             if (!exists || mode == FileMode.CreateNew)
                 return Create(path);
@@ -402,8 +443,10 @@ namespace System.IO.Abstractions.TestingHelpers
                 return Create(path);
             }
 
-            var length = mockFileDataAccessor.GetFile(path).Contents.Length;
+            var mockFileData = mockFileDataAccessor.GetFile(path);
+            mockFileData.CheckFileAccess(path, access);
 
+            var length = mockFileData.Contents.Length;
             MockFileStream.StreamType streamType = MockFileStream.StreamType.WRITE;
             if (access == FileAccess.Read)
                 streamType = MockFileStream.StreamType.READ;
@@ -442,11 +485,18 @@ namespace System.IO.Abstractions.TestingHelpers
 
             if (!mockFileDataAccessor.FileExists(path))
             {
-                throw new FileNotFoundException(string.Format(CultureInfo.InvariantCulture, StringResources.Manager.GetString("COULD_NOT_FIND_FILE_EXCEPTION"), path));
+                throw CommonExceptions.FileNotFound(path);
             }
-
+            mockFileDataAccessor.GetFile(path).CheckFileAccess(path, FileAccess.Read);
             return mockFileDataAccessor.GetFile(path).Contents;
         }
+
+#if NETCOREAPP2_0
+        public override Task<byte[]> ReadAllBytesAsync(string path, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            return Task.FromResult(ReadAllBytes(path));
+        }
+#endif
 
         public override string[] ReadAllLines(string path)
         {
@@ -454,8 +504,9 @@ namespace System.IO.Abstractions.TestingHelpers
 
             if (!mockFileDataAccessor.FileExists(path))
             {
-                throw new FileNotFoundException(string.Format(CultureInfo.InvariantCulture, StringResources.Manager.GetString("COULD_NOT_FIND_FILE_EXCEPTION"), path));
+                throw CommonExceptions.FileNotFound(path);
             }
+            mockFileDataAccessor.GetFile(path).CheckFileAccess(path, FileAccess.Read);
 
             return mockFileDataAccessor
                 .GetFile(path)
@@ -474,13 +525,26 @@ namespace System.IO.Abstractions.TestingHelpers
 
             if (!mockFileDataAccessor.FileExists(path))
             {
-                throw new FileNotFoundException(string.Format(CultureInfo.InvariantCulture, "Can't find {0}", path));
+                throw CommonExceptions.FileNotFound(path);
             }
 
+            mockFileDataAccessor.GetFile(path).CheckFileAccess(path, FileAccess.Read);
             return encoding
                 .GetString(mockFileDataAccessor.GetFile(path).Contents)
                 .SplitLines();
         }
+
+#if NETCOREAPP2_0
+        public override Task<string[]> ReadAllLinesAsync(string path, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            return Task.FromResult(ReadAllLines(path));
+        }
+
+        public override Task<string[]> ReadAllLinesAsync(string path, Encoding encoding, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            return Task.FromResult(ReadAllLines(path, encoding));
+        }
+#endif
 
         public override string ReadAllText(string path)
         {
@@ -488,7 +552,7 @@ namespace System.IO.Abstractions.TestingHelpers
 
             if (!mockFileDataAccessor.FileExists(path))
             {
-                throw new FileNotFoundException(string.Format(CultureInfo.InvariantCulture, "Can't find {0}", path));
+                throw CommonExceptions.FileNotFound(path);
             }
 
             return ReadAllText(path, MockFileData.DefaultEncoding);
@@ -505,6 +569,18 @@ namespace System.IO.Abstractions.TestingHelpers
 
             return ReadAllTextInternal(path, encoding);
         }
+
+#if NETCOREAPP2_0
+        public override Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(ReadAllText(path));
+        }
+
+        public override Task<string> ReadAllTextAsync(string path, Encoding encoding, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(ReadAllText(path, encoding));
+        }
+#endif
 
         public override IEnumerable<string> ReadLines(string path)
         {
@@ -541,12 +617,12 @@ namespace System.IO.Abstractions.TestingHelpers
 
             if (!mockFileDataAccessor.FileExists(sourceFileName))
             {
-                throw new FileNotFoundException(string.Format(CultureInfo.InvariantCulture, StringResources.Manager.GetString("COULD_NOT_FIND_FILE_EXCEPTION"), sourceFileName));
+                throw CommonExceptions.FileNotFound(sourceFileName);
             }
 
             if (!mockFileDataAccessor.FileExists(destinationFileName))
             {
-                throw new FileNotFoundException(string.Format(CultureInfo.InvariantCulture, StringResources.Manager.GetString("COULD_NOT_FIND_FILE_EXCEPTION"), destinationFileName));
+                throw CommonExceptions.FileNotFound(destinationFileName);
             }
 
             if (destinationBackupFileName != null)
@@ -565,7 +641,7 @@ namespace System.IO.Abstractions.TestingHelpers
 
             if (!mockFileDataAccessor.FileExists(path))
             {
-                throw new FileNotFoundException(string.Format(CultureInfo.InvariantCulture, "Can't find {0}", path), path);
+                throw CommonExceptions.FileNotFound(path);
             }
 
             var fileData = mockFileDataAccessor.GetFile(path);
@@ -586,7 +662,7 @@ namespace System.IO.Abstractions.TestingHelpers
                 }
                 else
                 {
-                    throw new FileNotFoundException(string.Format(CultureInfo.InvariantCulture, StringResources.Manager.GetString("COULD_NOT_FIND_FILE_EXCEPTION"), path), path);
+                    throw CommonExceptions.FileNotFound(path);
                 }
             }
             else
@@ -676,7 +752,15 @@ namespace System.IO.Abstractions.TestingHelpers
             mockFileDataAccessor.AddFile(path, new MockFileData(bytes));
         }
 
-       /// <summary>
+#if NETCOREAPP2_0
+        public override Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken cancellationToken)
+        {
+            WriteAllBytes(path, bytes);
+            return Task.CompletedTask;
+        }
+#endif
+
+        /// <summary>
         /// Creates a new file, writes a collection of strings to the file, and then closes the file.
         /// </summary>
         /// <param name="path">The file to write to.</param>
@@ -863,6 +947,32 @@ namespace System.IO.Abstractions.TestingHelpers
             WriteAllLines(path, new List<string>(contents), encoding);
         }
 
+#if NETCOREAPP2_0
+        public override Task WriteAllLinesAsync(string path, IEnumerable<string> contents, CancellationToken cancellationToken)
+        {
+            WriteAllLines(path, contents);
+            return Task.CompletedTask;
+        }
+
+        public override Task WriteAllLinesAsync(string path, IEnumerable<string> contents, Encoding encoding, CancellationToken cancellationToken)
+        {
+            WriteAllLines(path, contents, encoding);
+            return Task.CompletedTask;
+        }
+
+        public override Task WriteAllLinesAsync(string path, string[] contents, CancellationToken cancellationToken)
+        {
+            WriteAllLines(path, contents);
+            return Task.CompletedTask;
+        }
+
+        public override Task WriteAllLinesAsync(string path, string[] contents, Encoding encoding, CancellationToken cancellationToken)
+        {
+            WriteAllLines(path, contents, encoding);
+            return Task.CompletedTask;
+        }
+#endif
+
         /// <summary>
         /// Creates a new file, writes the specified string to the file using the specified encoding, and then closes the file. If the target file already exists, it is overwritten.
         /// </summary>
@@ -937,7 +1047,7 @@ namespace System.IO.Abstractions.TestingHelpers
 
             if (mockFileDataAccessor.Directory.Exists(path))
             {
-                throw new UnauthorizedAccessException(string.Format(CultureInfo.InvariantCulture, StringResources.Manager.GetString("ACCESS_TO_THE_PATH_IS_DENIED"), path));
+                throw CommonExceptions.AccessDenied(path);
             }
 
             VerifyDirectoryExists(path);
@@ -945,6 +1055,21 @@ namespace System.IO.Abstractions.TestingHelpers
             MockFileData data = contents == null ? new MockFileData(new byte[0]) : new MockFileData(contents, encoding);
             mockFileDataAccessor.AddFile(path, data);
         }
+
+#if NETCOREAPP2_0
+        public override Task WriteAllTextAsync(string path, string contents, CancellationToken cancellationToken)
+        {
+            WriteAllText(path, contents);
+            return Task.CompletedTask;
+        }
+
+        public override Task WriteAllTextAsync(string path, string contents, Encoding encoding, CancellationToken cancellationToken)
+        {
+            WriteAllText(path, contents, encoding);
+            return Task.CompletedTask;
+        }
+#endif
+
 
         internal static string ReadAllBytes(byte[] contents, Encoding encoding)
         {
@@ -958,6 +1083,7 @@ namespace System.IO.Abstractions.TestingHelpers
         private string ReadAllTextInternal(string path, Encoding encoding)
         {
             var mockFileData = mockFileDataAccessor.GetFile(path);
+            mockFileData.CheckFileAccess(path, FileAccess.Read);
             return ReadAllBytes(mockFileData.Contents, encoding);
         }
 
@@ -976,11 +1102,7 @@ namespace System.IO.Abstractions.TestingHelpers
 
             if (!mockFileDataAccessor.Directory.Exists(dir))
             {
-                throw new DirectoryNotFoundException(
-                    string.Format(
-                        CultureInfo.InvariantCulture, 
-                        StringResources.Manager.GetString("COULD_NOT_FIND_PART_OF_PATH_EXCEPTION"),
-                        path));
+                throw CommonExceptions.CouldNotFindPartOfPath(path);
             }
         }
     }

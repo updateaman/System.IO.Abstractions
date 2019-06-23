@@ -10,13 +10,5 @@ The base version represents the MAJOR and MINOR parts of [SemVer](https://semver
 
 ## Branches / tags
 
-* `master` contains the latest sources - this is where we develop.
-* `release` contains the sources for the latest version on `nuget.org` - this is where we deploy from.
-* All versions on `nuget.org` have a matching GitHub release/tag
-
-### Release workflow
-
-1. Create a [PR from `master` to `release`](https://github.com/System-IO-Abstractions/System.IO.Abstractions/compare/release...master?expand=1) and wait for CI to finish. 
-1. Inspect CI run (test results, version number)
-1. Merge PR and wait for deployment
-1. Inspect newly created package versions on NuGet.org and newly created GitHub release
+* `master` contains the latest sources. Each merge there triggers a deploy to `nuget.org`.
+* All versions on `nuget.org` have a matching GitHub release/tag.

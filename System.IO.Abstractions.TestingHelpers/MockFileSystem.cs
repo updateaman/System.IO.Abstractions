@@ -53,11 +53,11 @@ namespace System.IO.Abstractions.TestingHelpers
         }
 
         public StringOperations StringOperations { get; }
-        public FileBase File { get; }
-        public DirectoryBase Directory { get; }
+        public IFile File { get; }
+        public IDirectory Directory { get; }
         public IFileInfoFactory FileInfo { get; }
         public IFileStreamFactory FileStream { get; }
-        public PathBase Path { get; }
+        public IPath Path { get; }
         public IDirectoryInfoFactory DirectoryInfo { get; }
         public IDriveInfoFactory DriveInfo { get; }
         public IFileSystemWatcherFactory FileSystemWatcher { get; set; }
@@ -127,8 +127,9 @@ namespace System.IO.Abstractions.TestingHelpers
 
                     if (isReadOnly || isHidden)
                     {
-                        throw new UnauthorizedAccessException(string.Format(CultureInfo.InvariantCulture, StringResources.Manager.GetString("ACCESS_TO_THE_PATH_IS_DENIED"), path));
+                        throw CommonExceptions.AccessDenied(path);
                     }
+                    file.CheckFileAccess(fixedPath, FileAccess.Write);
                 }
 
                 var directoryPath = Path.GetDirectoryName(fixedPath);
@@ -151,7 +152,7 @@ namespace System.IO.Abstractions.TestingHelpers
             {
                 if (FileExists(fixedPath) &&
                     (GetFile(fixedPath).Attributes & FileAttributes.ReadOnly) == FileAttributes.ReadOnly)
-                    throw new UnauthorizedAccessException(string.Format(CultureInfo.InvariantCulture, StringResources.Manager.GetString("ACCESS_TO_THE_PATH_IS_DENIED"), fixedPath));
+                        throw CommonExceptions.AccessDenied(fixedPath);
 
                 var lastIndex = 0;
                 var isUnc =
@@ -164,7 +165,7 @@ namespace System.IO.Abstractions.TestingHelpers
                     lastIndex = StringOperations.IndexOf(fixedPath, separator, 2);
 
                     if (lastIndex < 0)
-                        throw new ArgumentException(@"The UNC path should be of the form \\server\share.", "path");
+                        throw CommonExceptions.InvalidUncPath(nameof(path));
 
                     /*
                      * Although CreateDirectory(@"\\server\share\") is not going to work in real code, we allow it here for the purposes of setting up test doubles.
@@ -247,7 +248,7 @@ namespace System.IO.Abstractions.TestingHelpers
             {
                 if (FileExists(path) && (GetFile(path).Attributes & FileAttributes.ReadOnly) == FileAttributes.ReadOnly)
                 {
-                    throw new UnauthorizedAccessException(string.Format(CultureInfo.InvariantCulture, StringResources.Manager.GetString("ACCESS_TO_THE_PATH_IS_DENIED"), path));
+                    throw CommonExceptions.AccessDenied(path);
                 }
 
                 files.Remove(path);

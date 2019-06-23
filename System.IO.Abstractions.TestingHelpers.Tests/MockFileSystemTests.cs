@@ -321,7 +321,7 @@ namespace System.IO.Abstractions.TestingHelpers.Tests
             const string path = @"c:\";
             var fileSystem = new MockFileSystem();
             fileSystem.AddDirectory(XFS.Path(path));
-            
+
             // Act
             TestDelegate getFilesWithInvalidCharacterInPath = () => fileSystem.Directory.GetFiles($"{path}{'\0'}.txt");
 
@@ -352,8 +352,8 @@ namespace System.IO.Abstractions.TestingHelpers.Tests
 
         private class TestFileSystemWatcherFactory : IFileSystemWatcherFactory
         {
-            public FileSystemWatcherBase CreateNew() => new TestFileSystemWatcher(null);
-            public FileSystemWatcherBase FromPath(string path) => new TestFileSystemWatcher(path);
+            public IFileSystemWatcher CreateNew() => new TestFileSystemWatcher(null);
+            public IFileSystemWatcher FromPath(string path) => new TestFileSystemWatcher(path);
         }
 
         private class TestFileSystemWatcher : FileSystemWatcherBase
